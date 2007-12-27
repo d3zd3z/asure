@@ -8,6 +8,7 @@ import sys
 from os.path import join
 
 from cPickle import dump, load
+import gzip
 
 def walk(top):
     """Root of directory generator"""
@@ -55,9 +56,54 @@ def walker(path, name, topstat):
 	yield '-', onename
 
     # Last, yield the leaving.
-    yield ('u', name)
+    yield ('u',)
+
+version = 'Asure scan version 1.0'
+
+def reader(path):
+    """Iterate over a previously written dump"""
+    fd = gzip.open(path, 'rb')
+    vers = load(fd)
+    if version != vers:
+	raise "incompatible version of asure file"
+    try:
+	while True:
+	    yield load(fd)
+    except EOFError:
+	return
+
+def writer(path, tmppath, iter):
+    """Write the given item (probably assembled iterator)"""
+    fd = gzip.open(tmppath, 'wb')
+    dump(version, fd, -1)
+    for item in iter:
+	dump(item, fd, -1)
+    fd.close
+    os.rename(tmppath, path)
+
+def fresh_scan():
+    """Perform a fresh scan of the filesystem"""
+    writer('asure.dat.gz', 'asure.0.gz', walk('.'))
+
+def main(argv):
+    if len(argv) != 1:
+	usage()
+    if argv[0] == 'scan':
+	fresh_scan()
+    elif argv[0] == 'update':
+	print "Update"
+    elif argv[0] == 'check':
+	print "Check"
+    elif argv[0] == 'show':
+	for i in reader('asure.dat.gz'):
+	    print i
+
+def usage():
+    print "Usage: asure {scan|update|check}"
+    sys.exit(1)
 
 if __name__ == '__main__':
     "Test this"
-    for info in walk('/home/davidb/wd/asure'):
-	print info
+    main(sys.argv[1:])
+    #for info in walk('/home/davidb/wd/asure'):
+    #print info
