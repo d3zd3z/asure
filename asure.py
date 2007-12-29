@@ -211,7 +211,8 @@ class comparer:
 		    # A directory has been deleted.
 		    for x in self.handle_delete_dir(path, a, False):
 			yield x
-		    for x in self.delete_whole_dir(self.__left, path):
+		    for x in self.delete_whole_dir(self.__left,
+			    os.path.join(path, a[1])):
 			yield x
 		    a = self.__left.next()
 		    continue
@@ -221,7 +222,8 @@ class comparer:
 		    for x in self.handle_add_dir(path, b, False):
 			yield x
 
-		    for x in self.add_whole_dir(self.__right, path):
+		    for x in self.add_whole_dir(self.__right,
+			    os.path.join(path, b[1])):
 			yield x
 		    b = self.__right.next()
 		    continue
@@ -266,7 +268,8 @@ class comparer:
 	    elif a[0] == 'd' and (b[0] == '-' or b[0] == 'u'):
 		for x in self.handle_delete_dir(path, a, False):
 		    yield x
-		for x in self.delete_whole_dir(self.__left, path):
+		for x in self.delete_whole_dir(self.__left,
+			os.path.join(path, a[1])):
 		    yield x
 		a = self.__left.next()
 		continue
@@ -274,7 +277,8 @@ class comparer:
 	    elif (a[0] == '-' or a[0] == 'u') and b[0] == 'd':
 		for x in self.handle_add_dir(path, b, False):
 		    yield x
-		for x in self.add_whole_dir(self.__right, path):
+		for x in self.add_whole_dir(self.__right,
+		    os.path.join(path, b[1])):
 		    yield x
 		b = self.__right.next()
 		continue
