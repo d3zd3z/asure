@@ -390,6 +390,13 @@ def update_link(assoc, path, name):
     if assoc['kind'] == 'lnk':
 	assoc['targ'] = os.readlink(os.path.join(path, name))
 
+def same_inode(a, b):
+    """Do these two nodes reference what appears to be the same,
+    unmodified inode."""
+    return (a['kind'] == b['kind'] and
+	    a['ino'] == b['ino'] and
+	    a['ctime'] == b['ctime'])
+
 class update_comparer(comparer):
     """Yields a tree equivalent to the right tree, which should be
     coming from a live filesystem.  Fills in symlink destinations and
@@ -405,6 +412,11 @@ class update_comparer(comparer):
 
     def handle_same_nondir(self, path, a, b):
 	update_link(b[2], path, b[1])
+	if b[2]['kind'] == 'file':
+	    if same_inode(a[2], b[2]):
+		b[2]['md5'] = a[2]['md5']
+	    else:
+		b[2]['md5'] = hashing.hashof(os.path.join(path, b[1]))
 	yield b
 	return
 
@@ -442,15 +454,19 @@ def writer(path, iter):
 	dump(item, fd, -1)
     fd.close
 
-def fresh_scan():
-    """Perform a fresh scan of the filesystem"""
-    tree = update_comparer(empty_tree(), walk('.'))
-    writer('0sure.0.gz', tree.run())
+def rename_cycle():
+    """Cycle through the names"""
     try:
 	os.rename('0sure.dat.gz', '0sure.bak.gz')
     except OSError:
 	pass
     os.rename('0sure.0.gz', '0sure.dat.gz')
+
+def fresh_scan():
+    """Perform a fresh scan of the filesystem"""
+    tree = update_comparer(empty_tree(), walk('.'))
+    writer('0sure.0.gz', tree.run())
+    rename_cycle()
 
 def check_scan():
     """Perform a scan of the filesystem, and compare it with the scan
@@ -460,6 +476,14 @@ def check_scan():
     # compare_trees(prior, cur)
     for x in check_comparer(prior, cur).run():
 	print x
+
+def update():
+    """Scan filesystem, but also read the previous scan to cache md5
+    hashes of files that haven't had any inode changes"""
+    prior = reader('0sure.dat.gz')
+    cur = update_comparer(prior, walk('.')).run()
+    writer('0sure.0.gz', cur)
+    rename_cycle()
 
 def signoff():
     """Compare the previous scan with the current."""
@@ -474,7 +498,7 @@ def main(argv):
     if argv[0] == 'scan':
 	fresh_scan()
     elif argv[0] == 'update':
-	print "Update"
+	update()
     elif argv[0] == 'check':
 	check_scan()
     elif argv[0] == 'signoff':
