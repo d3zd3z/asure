@@ -35,6 +35,10 @@ def walker(path, name, topstat):
     # Stat each name found, and put the result in one of two lists.
     dirs, nondirs = [], []
     for onename in names:
+	if path == '.' and (onename == "0sure.dat.gz" or
+		onename == "0sure.bak.gz" or
+		onename == "0sure.0.gz"):
+	    continue
 	st = os.lstat(join(path, onename))
 	if S_ISDIR(st.st_mode):
 	    dirs.append((onename, st))
@@ -58,115 +62,194 @@ def walker(path, name, topstat):
     # Last, yield the leaving.
     yield ('u',)
 
-def compare_trees(prior, cur):
-    """Compare two scanned trees."""
-    a = prior.next()
-    if a[0] != 'd':
-	raise "Scan doesn't start with a directory"
-    b = cur.next()
-    if b[0] != 'd':
-	raise "Tree walk doesn't start with a directory"
+class comparer:
+    """Class for comparing two directory iterations.  Keeps track of
+    state, and allows child classes to define handlers for the various
+    types of differences found."""
 
-    # We don't concern ourselves with whether the names are the same
-    # at this point.
-    comp_walk(prior, cur)
+    def __init__(self, left, right):
+	self.__left = left
+	self.__right = right
 
-def comp_walk(prior, cur, depth=1):
-    """Inside directory.
+    # Default handlers for the 6 possible changes (or not changes)
+    # that can happen in a directory.  The adds and deletes take an
+    # additional argument that will be set to true if this added or
+    # remoted entity is contained in an entirely new directory.  Some
+    # handlers may want to avoid printing verbose messages for the
+    # contents of added or deleted directories, and can use this
+    # value.
+    def handle_same_dir(self, path, a, b):
+	#print "same_dir(%s, %s, %s)" % (path, a, b)
+	pass
+    def handle_delete_dir(self, path, a, recursing):
+	#print "delete_dir(%s, %s, %s)" % (path, a, recursing)
+	pass
+    def handle_add_dir(self, path, a, recursing):
+	#print "add_dir(%s, %s, %s)" % (path, a, recursing)
+	pass
+    def handle_same_nondir(self, path, a, b):
+	#print "same_nondir(%s, %s, %s)" % (path, a, b)
+	pass
+    def handle_delete_nondir(self, path, a, recursing):
+	#print "delete_nondir(%s, %s, %s)" % (path, a, recursing)
+	pass
+    def handle_add_nondir(self, path, a, recursing):
+	#print "add_nondir(%s, %s, %s)" % (path, a, recursing)
+	pass
 
-    Recursively walks both the "prior" and "cur" directories,
-    comparing the trees found inside.  Returns when each has left this
-    directory."""
+    def run(self):
+	a = self.__left.next()
+	if a[0] != 'd':
+	    raise "Scan doesn't start with a directory"
+	b = self.__right.next()
+	if b[0] != 'd':
+	    raise "Tree walk doesn't start with a directory"
+	self.__run(b[1], 1)
 
-    a = prior.next()
-    b = cur.next()
-    while True:
+    def __run(self, path, depth):
+	"""Iterate both pairs of directories equally
 
-	# print "Comparing (%d) %s and %s" % (depth, a, b)
+	Processes the contents of a single directory, recursively
+	calling itself to handle child directories.  Returns with both
+	iterators advanced past the 'u' node that ends the dir."""
+	# print "run(%d): '%s'" % (depth, path)
+	a = self.__left.next()
+	b = self.__right.next()
 
-	# Both are 'leave' nodes.
-	if a[0] == 'u' and b[0] == 'u':
-	    # print "...leave"
-	    return
+	while True:
+	    # print "Comparing (%d) %s and %s" % (depth, a, b)
+	    if a[0] == 'u' and b[0] == 'u':
+		# Both are leaving the directory.
+		# print "leave(%d): '%s'" % (depth, path)
+		return
 
-	if a[0] == 'd' and b[0] == 'd':
-	    # Both are looking at a child subdirectory.
+	    elif a[0] == 'd' and b[0] == 'd':
+		# Both looking at a directory entry.
 
-	    if a[1] == b[1]:
-		# Same name, just walk this tree.
-		# print "...same dir, enter"
-		comp_walk(prior, cur, depth+1)
-		a = prior.next()
-		b = cur.next()
+		if a[1] == b[1]:
+		    # if the name is the same, walk the tree.
+		    self.handle_same_dir(path, a, b)
+		    self.__run(os.path.join(path, a[1]), depth + 1)
+		    a = self.__left.next()
+		    b = self.__right.next()
+		    continue
+
+		elif a[1] < b[1]:
+		    # A directory has been deleted.
+		    self.handle_delete_dir(path, a, False)
+		    self.delete_whole_dir(self.__left)
+		    a = self.__left.next()
+		    continue
+
+		else:
+		    # A directory has been added.
+		    self.handle_add_dir(path, b, False)
+
+		    self.add_whole_dir(self.__right, path)
+		    b = self.__right.next()
+		    continue
+
+	    elif a[0] == '-' and b[0] == '-':
+		# Both are looking at a non-dir.
+
+		if a[1] == b[1]:
+		    # Same name as well.
+		    self.handle_same_nondir(path, a, b)
+		    a = self.__left.next()
+		    b = self.__right.next()
+		    continue
+
+		elif a[1] < b[1]:
+		    # Deleted non-dir.
+		    self.handle_delete_nondir(path, a, False)
+		    a = self.__left.next()
+		    continue
+
+		else:
+		    # Added non-dir.
+		    self.handle_add_nondir(path, b, False)
+		    b = self.__right.next()
+		    continue
+
+	    elif a[0] == '-' and b[0] == 'u':
+		self.handle_delete_nondir(path, a, False)
+		a = self.__left.next()
 		continue
 
-	    elif a[1] < b[1]:
-		# A directory has been deleted.
-		print "Delete dir: %s" % a[1]
-		consume_dir(prior)
-		a = prior.next()
+	    elif a[0] == 'u' and b[0] == '-':
+		self.handle_add_nondir(path, b, False)
+		b = self.__right.next()
+		continue
+
+	    elif a[0] == 'd' and b[0] == '-':
+		self.handle_delete_dir(path, a, False)
+		self.delete_whole_dir(self.__left, path)
+		a = self.__left.next()
+		continue
+
+	    elif (a[0] == '-' or a[0] == 'u') and b[0] == 'd':
+		self.handle_add_dir(path, b, False)
+		self.add_whole_dir(self.__right, path)
+		b = self.__right.next()
 		continue
 
 	    else:
-		# A directory has been added.
-		print "Add dir: %s" % b[1]
-		consume_dir(cur)
-		b = cur.next()
-		continue
+		print "Unhandled case!!!"
+		sys.exit(2)
 
-	elif a[0] == '-' and b[0] == '-':
-	    # Both are looking at a non-dir.
-	    if a[1] == b[1]:
-		# Same name, all is well.
-		# print "...same file"
-		a = prior.next()
-		b = cur.next()
-		continue
-
-	    elif a[1] < b[1]:
-		print "Delete nondir: %s" % a[1]
-		a = prior.next()
-		continue
-
+    def add_whole_dir(self, iter, path):
+	"Consume entries until this directory has been added"
+	# print "add_whole_dir: %s" % path
+	while True:
+	    a = iter.next()
+	    if a[0] == 'u':
+		return
+	    elif a[0] == 'd':
+		self.handle_add_dir(path, a, True)
+		self.add_whole_dir(iter, os.path.join(path, a[1]))
 	    else:
-		print "Add nondir: %s" % b[1]
-		b = cur.next()
-		continue
+		self.handle_add_nondir(path, a, True)
 
-	elif a[0] == '-' and b[0] == 'u':
-	    print "Delete nondir: %s" % a[1]
-	    a = prior.next()
-	    continue
+    def delete_whole_dir(self, iter, path):
+	"Consume entries until this directory has been deleted"
+	# print "delete_whole_dir: %s" % path
+	while True:
+	    a = iter.next()
+	    if a[0] == 'u':
+		return
+	    elif a[0] == 'd':
+		self.handle_delete_dir(path, a, True)
+		self.delete_whole_dir(iter, os.path.join(path, a[1]))
+	    else:
+		self.handle_delete_nondir(path, a, True)
 
-	elif a[0] == 'u' and b[0] == '-':
-	    print "New nondir: %s" % b[1]
-	    b = cur.next()
-	    continue
-
-	elif a[0] == 'd' and b[0] == '-':
-	    print "Delete dir: %s" % a[1]
-	    consume_dir(prior)
-	    a = prior.next()
-	    continue
-
-	elif (a[0] == '-' or a[0] == 'u') and b[0] == 'd':
-	    print "Add dir: %s" % b[1]
-	    consume_dir(cur)
-	    b = cur.next()
-	    continue
-
-	else:
-	    print "Unhandled case: prior: %s, cur: %s" % (a[0], b[0])
-	    sys.exit(2)
-
-def consume_dir(iter):
-    """Consume entries until this directory has been exhausted"""
-    while True:
-	a = iter.next()
-	if a[0] == 'u':
-	    return
-	elif a[0] == 'd':
-	    consume_dir(iter)
+class check_comparer(comparer):
+    """Comparer for comparing either two trees, or a tree and a
+    filesystem.  'right' should be the newer tree."""
+    def handle_same_dir(self, path, a, b):
+	#print "same_dir(%s, %s, %s)" % (path, a, b)
+	pass
+    def handle_delete_dir(self, path, a, recursing):
+	if not recursing:
+	    print "- dir  %s" % (os.path.join(path, a[1]))
+	pass
+    def handle_add_dir(self, path, a, recursing):
+	if not recursing:
+	    print "+ dir  %s" % (os.path.join(path, a[1]))
+	pass
+    def handle_same_nondir(self, path, a, b):
+	#print "same_nondir(%s, %s, %s)" % (path, a, b)
+	pass
+    def handle_delete_nondir(self, path, a, recursing):
+	if not recursing:
+	    #print "delete_nondir(%s, %s, %s)" % (path, a, recursing)
+	    print "-      %s" % (os.path.join(path, a[1]))
+	pass
+    def handle_add_nondir(self, path, a, recursing):
+	if not recursing:
+	    #print "add_nondir(%s, %s, %s)" % (path, a, recursing)
+	    print "+      %s" % (os.path.join(path, a[1]))
+	pass
 
 version = 'Asure scan version 1.0'
 
@@ -193,14 +276,15 @@ def writer(path, tmppath, iter):
 
 def fresh_scan():
     """Perform a fresh scan of the filesystem"""
-    writer('asure.dat.gz', 'asure.0.gz', walk('.'))
+    writer('0sure.dat.gz', '0sure.0.gz', walk('.'))
 
 def check_scan():
     """Perform a scan of the filesystem, and compare it with the scan
     file.  reports differences."""
-    prior = reader('asure.dat.gz')
+    prior = reader('0sure.dat.gz')
     cur = walk('.')
-    compare_trees(prior, cur)
+    # compare_trees(prior, cur)
+    check_comparer(prior, cur).run()
 
 def main(argv):
     if len(argv) != 1:
@@ -212,7 +296,7 @@ def main(argv):
     elif argv[0] == 'check':
 	check_scan()
     elif argv[0] == 'show':
-	for i in reader('asure.dat.gz'):
+	for i in reader('0sure.dat.gz'):
 	    print i
 
 def usage():
@@ -222,5 +306,3 @@ def usage():
 if __name__ == '__main__':
     "Test this"
     main(sys.argv[1:])
-    #for info in walk('/home/davidb/wd/asure'):
-    #print info
