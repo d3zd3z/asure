@@ -379,12 +379,12 @@ class check_comparer(comparer):
 	if recursing:
 	    return
 	else:
-	    yield "-      %s" % (os.path.join(path, a[1]))
+	    yield "- %-4s %s" % (a[2]['kind'], os.path.join(path, a[1]))
     def handle_add_nondir(self, path, a, recursing):
 	if recursing:
 	    return
 	else:
-	    yield "+      %s" % (os.path.join(path, a[1]))
+	    yield "+ %-4s %s" % (a[2]['kind'], os.path.join(path, a[1]))
 
 def update_link(assoc, path, name):
     if assoc['kind'] == 'lnk':
