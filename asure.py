@@ -10,6 +10,8 @@ from os.path import join
 from cPickle import dump, load
 import gzip
 
+import hashing
+
 def walk(top):
     """Root of directory generator"""
     topstat = os.lstat(top)
@@ -325,7 +327,7 @@ class comparer:
 
 __must_match = {
 	'dir': ['uid', 'gid', 'perm'],
-	'file': ['uid', 'gid', 'mtime', 'perm'],
+	'file': ['uid', 'gid', 'mtime', 'perm', 'md5'],
 	'lnk': ['targ'],
 	'sock': ['uid', 'gid', 'perm'],
 	'fifo': ['uid', 'gid', 'perm'],
@@ -408,6 +410,8 @@ class update_comparer(comparer):
 
     def handle_add_nondir(self, path, a, recursing):
 	update_link(a[2], path, a[1])
+	if a[2]['kind'] == 'file':
+	    a[2]['md5'] = hashing.hashof(os.path.join(path, a[1]))
 	yield a
 	return
 
