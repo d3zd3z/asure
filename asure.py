@@ -425,20 +425,24 @@ def reader(path):
     except EOFError:
 	return
 
-def writer(path, tmppath, iter):
+def writer(path, iter):
     """Write the given item (probably assembled iterator)"""
-    fd = gzip.open(tmppath, 'wb')
+    fd = gzip.open(path, 'wb')
     dump(version, fd, -1)
     for item in iter:
 	# print item
 	dump(item, fd, -1)
     fd.close
-    os.rename(tmppath, path)
 
 def fresh_scan():
     """Perform a fresh scan of the filesystem"""
     tree = update_comparer(empty_tree(), walk('.'))
-    writer('0sure.dat.gz', '0sure.0.gz', tree.run())
+    writer('0sure.0.gz', tree.run())
+    try:
+	os.rename('0sure.dat.gz', '0sure.bak.gz')
+    except OSError:
+	pass
+    os.rename('0sure.0.gz', '0sure.dat.gz')
 
 def check_scan():
     """Perform a scan of the filesystem, and compare it with the scan
@@ -446,6 +450,13 @@ def check_scan():
     prior = reader('0sure.dat.gz')
     cur = update_comparer(empty_tree(), walk('.')).run()
     # compare_trees(prior, cur)
+    for x in check_comparer(prior, cur).run():
+	print x
+
+def signoff():
+    """Compare the previous scan with the current."""
+    prior = reader('0sure.bak.gz')
+    cur = reader('0sure.dat.gz')
     for x in check_comparer(prior, cur).run():
 	print x
 
@@ -458,6 +469,8 @@ def main(argv):
 	print "Update"
     elif argv[0] == 'check':
 	check_scan()
+    elif argv[0] == 'signoff':
+	signoff()
     elif argv[0] == 'show':
 	for i in reader('0sure.dat.gz'):
 	    print i
