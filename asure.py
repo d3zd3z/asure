@@ -16,7 +16,7 @@ def walk(top):
     for x in walker(top, '.', topstat):
 	yield x
 
-def walker(path, name, topstat):
+def walker(path, name, dirstat):
     """Directory tree generator.
 
     At one point, this started as a copy of os.walk from Python's
@@ -46,21 +46,81 @@ def walker(path, name, topstat):
 	    nondirs.append((onename, st))
 
     # Indicate "entering" the directory.
-    yield 'd', name
+    yield 'd', name, convert_stat(dirstat)
 
     # Then recursively walk into all of the subdirectories.
     for (onename, st) in dirs:
 	subpath = join(path, onename)
-	if st.st_dev == topstat.st_dev:
-	    for x in walker(subpath, onename, topstat):
+	if st.st_dev == dirstat.st_dev:
+	    for x in walker(subpath, onename, st):
 		yield x
 
     # Then yield each entry that is not a subdirectory.
     for (onename, st) in nondirs:
-	yield '-', onename
+	yield '-', onename, convert_stat(st)
 
     # Last, yield the leaving.
     yield ('u',)
+
+# Convert the passed stat info into an association of the information
+# itself.  Does not do anything that requires reading the file (such
+# as readlink or md5).
+def convert_stat(st):
+    if S_ISDIR(st.st_mode):
+	return { 'kind': 'dir',
+		 'uid': st.st_uid,
+		 'gid': st.st_gid,
+		 'perm': S_IMODE(st.st_mode) }
+
+    elif S_ISREG(st.st_mode):
+	return { 'kind': 'file',
+		 'uid': st.st_uid,
+		 'gid': st.st_gid,
+		 'mtime': st.st_mtime,
+		 'ctime': st.st_ctime,
+		 'ino': st.st_ino,
+		 'perm': S_IMODE(st.st_mode) }
+
+    elif S_ISLNK(st.st_mode):
+	return { 'kind': 'lnk' }
+
+    elif S_ISSOCK:
+	return { 'kind': 'sock',
+		 'uid': st.st_uid,
+		 'gid': st.st_gid,
+		 'perm': S_IMODE(st.st_mode) }
+
+    elif S_ISFIFO:
+	return { 'kind': 'fifo',
+		 'uid': st.st_uid,
+		 'gid': st.st_gid,
+		 'perm': S_IMODE(st.st_mode) }
+
+    elif S_ISBLK:
+	return { 'kind': 'blk',
+		 'uid': st.st_uid,
+		 'gid': st.st_gid,
+		 'devmaj': os.major(st.st_rdev),
+		 'devmin': os.minor(st.st_rdev),
+		 'perm': S_IMODE(st.st_mode) }
+
+    elif S_ISCHR:
+	return { 'kind': 'chr',
+		 'uid': st.st_uid,
+		 'gid': st.st_gid,
+		 'devmaj': os.major(st.st_rdev),
+		 'devmin': os.minor(st.st_rdev),
+		 'perm': S_IMODE(st.st_mode) }
+
+    else:
+	raise "Unknown file kind"
+
+def empty_tree():
+    """Make an empty tree.  No meaningful attributes for the root
+    directory"""
+    yield 'd', '.', {}
+    yield 'u',
+    return
 
 def empty_generator():
     return
@@ -100,6 +160,8 @@ class comparer:
     def handle_add_nondir(self, path, a, recursing):
 	#print "add_nondir(%s, %s, %s)" % (path, a, recursing)
 	return empty_generator()
+    def handle_leave(self, path, recursing):
+	return empty_generator()
 
     def run(self):
 	a = self.__left.next()
@@ -108,7 +170,10 @@ class comparer:
 	b = self.__right.next()
 	if b[0] != 'd':
 	    raise "Tree walk doesn't start with a directory"
-	return self.__run(b[1], 1)
+	for x in self.handle_same_dir(".", a, b):
+	    yield x
+	for x in self.__run(b[1], 1):
+	    yield x
 
     def __run(self, path, depth):
 	"""Iterate both pairs of directories equally
@@ -125,6 +190,8 @@ class comparer:
 	    if a[0] == 'u' and b[0] == 'u':
 		# Both are leaving the directory.
 		# print "leave(%d): '%s'" % (depth, path)
+		for x in self.handle_leave(path, False):
+		    yield x
 		return
 
 	    elif a[0] == 'd' and b[0] == 'd':
@@ -144,7 +211,7 @@ class comparer:
 		    # A directory has been deleted.
 		    for x in self.handle_delete_dir(path, a, False):
 			yield x
-		    for x in self.delete_whole_dir(self.__left):
+		    for x in self.delete_whole_dir(self.__left, path):
 			yield x
 		    a = self.__left.next()
 		    continue
@@ -196,7 +263,7 @@ class comparer:
 		b = self.__right.next()
 		continue
 
-	    elif a[0] == 'd' and b[0] == '-':
+	    elif a[0] == 'd' and (b[0] == '-' or b[0] == 'u'):
 		for x in self.handle_delete_dir(path, a, False):
 		    yield x
 		for x in self.delete_whole_dir(self.__left, path):
@@ -213,7 +280,7 @@ class comparer:
 		continue
 
 	    else:
-		print "Unhandled case!!!"
+		print "Unhandled case: '%s' and '%s'" % (a[0], b[0])
 		sys.exit(2)
 
     def add_whole_dir(self, iter, path):
@@ -222,6 +289,8 @@ class comparer:
 	while True:
 	    a = iter.next()
 	    if a[0] == 'u':
+		for x in self.handle_leave(path, True):
+		    yield x
 		return
 	    elif a[0] == 'd':
 		for x in self.handle_add_dir(path, a, True):
@@ -238,6 +307,8 @@ class comparer:
 	while True:
 	    a = iter.next()
 	    if a[0] == 'u':
+		for x in self.handle_leave(path, True):
+		    yield x
 		return
 	    elif a[0] == 'd':
 		for x in self.handle_delete_dir(path, a, True):
@@ -248,14 +319,43 @@ class comparer:
 		for x in self.handle_delete_nondir(path, a, True):
 		    yield x
 
+__must_match = {
+	'dir': ['uid', 'gid', 'perm'],
+	'file': ['uid', 'gid', 'mtime', 'perm'],
+	'lnk': ['targ'],
+	'sock': ['uid', 'gid', 'perm'],
+	'fifo': ['uid', 'gid', 'perm'],
+	'blk': ['uid', 'gid', 'perm', 'devmaj', 'devmin'],
+	'chr': ['uid', 'gid', 'perm', 'devmaj', 'devmin'],
+	}
+def compare_entries(path, a, b):
+    if a['kind'] != b['kind']:
+	yield "- %-4s %s" % (a['kind'], path)
+	yield "+ %-4s %s" % (b['kind'], path)
+	return
+    misses = []
+    for item in __must_match[a['kind']]:
+	if not (a.has_key(item) and b.has_key(item)):
+	    misses.append(item)
+	elif a[item] != b[item]:
+	    misses.append(item)
+    if misses:
+	yield "[%s] %s" % (",".join(misses), path)
+    if 'targ' in misses:
+	if a.has_key('targ'):
+	    yield "  old targ: %s" % a['targ']
+	if b.has_key('targ'):
+	    yield "  new targ: %s" % b['targ']
+    return
+
 class check_comparer(comparer):
     """Comparer for comparing either two trees, or a tree and a
     filesystem.  'right' should be the newer tree.
     Yields strings giving the tree differences.
     """
     def handle_same_dir(self, path, a, b):
-	#print "same_dir(%s, %s, %s)" % (path, a, b)
-	return empty_generator()
+	return compare_entries(os.path.join(path, a[1]), a[2], b[2])
+
     def handle_delete_dir(self, path, a, recursing):
 	if recursing:
 	    return
@@ -267,8 +367,8 @@ class check_comparer(comparer):
 	else:
 	    yield "+ dir  %s" % (os.path.join(path, a[1]))
     def handle_same_nondir(self, path, a, b):
-	#print "same_nondir(%s, %s, %s)" % (path, a, b)
-	return empty_generator()
+	return compare_entries(os.path.join(path, a[1]), a[2], b[2])
+
     def handle_delete_nondir(self, path, a, recursing):
 	if recursing:
 	    return
@@ -279,6 +379,37 @@ class check_comparer(comparer):
 	    return
 	else:
 	    yield "+      %s" % (os.path.join(path, a[1]))
+
+def update_link(assoc, path, name):
+    if assoc['kind'] == 'lnk':
+	assoc['targ'] = os.readlink(os.path.join(path, name))
+
+class update_comparer(comparer):
+    """Yields a tree equivalent to the right tree, which should be
+    coming from a live filesystem.  Fills in symlink destinations and
+    file md5sums (if possible)."""
+
+    def handle_same_dir(self, path, a, b):
+	yield b
+	return
+
+    def handle_add_dir(self, path, a, recursing):
+	yield a
+	return
+
+    def handle_same_nondir(self, path, a, b):
+	update_link(b[2], path, b[1])
+	yield b
+	return
+
+    def handle_add_nondir(self, path, a, recursing):
+	update_link(a[2], path, a[1])
+	yield a
+	return
+
+    def handle_leave(self, path, recursing):
+	yield 'u',
+	return
 
 version = 'Asure scan version 1.0'
 
@@ -299,19 +430,21 @@ def writer(path, tmppath, iter):
     fd = gzip.open(tmppath, 'wb')
     dump(version, fd, -1)
     for item in iter:
+	# print item
 	dump(item, fd, -1)
     fd.close
     os.rename(tmppath, path)
 
 def fresh_scan():
     """Perform a fresh scan of the filesystem"""
-    writer('0sure.dat.gz', '0sure.0.gz', walk('.'))
+    tree = update_comparer(empty_tree(), walk('.'))
+    writer('0sure.dat.gz', '0sure.0.gz', tree.run())
 
 def check_scan():
     """Perform a scan of the filesystem, and compare it with the scan
     file.  reports differences."""
     prior = reader('0sure.dat.gz')
-    cur = walk('.')
+    cur = update_comparer(empty_tree(), walk('.')).run()
     # compare_trees(prior, cur)
     for x in check_comparer(prior, cur).run():
 	print x
