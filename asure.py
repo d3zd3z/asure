@@ -62,6 +62,10 @@ def walker(path, name, topstat):
     # Last, yield the leaving.
     yield ('u',)
 
+def empty_generator():
+    return
+    yield ()
+
 class comparer:
     """Class for comparing two directory iterations.  Keeps track of
     state, and allows child classes to define handlers for the various
@@ -80,22 +84,22 @@ class comparer:
     # value.
     def handle_same_dir(self, path, a, b):
 	#print "same_dir(%s, %s, %s)" % (path, a, b)
-	pass
+	return empty_generator()
     def handle_delete_dir(self, path, a, recursing):
 	#print "delete_dir(%s, %s, %s)" % (path, a, recursing)
-	pass
+	return empty_generator()
     def handle_add_dir(self, path, a, recursing):
 	#print "add_dir(%s, %s, %s)" % (path, a, recursing)
-	pass
+	return empty_generator()
     def handle_same_nondir(self, path, a, b):
 	#print "same_nondir(%s, %s, %s)" % (path, a, b)
-	pass
+	return empty_generator()
     def handle_delete_nondir(self, path, a, recursing):
 	#print "delete_nondir(%s, %s, %s)" % (path, a, recursing)
-	pass
+	return empty_generator()
     def handle_add_nondir(self, path, a, recursing):
 	#print "add_nondir(%s, %s, %s)" % (path, a, recursing)
-	pass
+	return empty_generator()
 
     def run(self):
 	a = self.__left.next()
@@ -104,7 +108,7 @@ class comparer:
 	b = self.__right.next()
 	if b[0] != 'd':
 	    raise "Tree walk doesn't start with a directory"
-	self.__run(b[1], 1)
+	return self.__run(b[1], 1)
 
     def __run(self, path, depth):
 	"""Iterate both pairs of directories equally
@@ -128,24 +132,30 @@ class comparer:
 
 		if a[1] == b[1]:
 		    # if the name is the same, walk the tree.
-		    self.handle_same_dir(path, a, b)
-		    self.__run(os.path.join(path, a[1]), depth + 1)
+		    for x in self.handle_same_dir(path, a, b):
+			yield x
+		    for x in self.__run(os.path.join(path, a[1]), depth + 1):
+			yield x
 		    a = self.__left.next()
 		    b = self.__right.next()
 		    continue
 
 		elif a[1] < b[1]:
 		    # A directory has been deleted.
-		    self.handle_delete_dir(path, a, False)
-		    self.delete_whole_dir(self.__left)
+		    for x in self.handle_delete_dir(path, a, False):
+			yield x
+		    for x in self.delete_whole_dir(self.__left):
+			yield x
 		    a = self.__left.next()
 		    continue
 
 		else:
 		    # A directory has been added.
-		    self.handle_add_dir(path, b, False)
+		    for x in self.handle_add_dir(path, b, False):
+			yield x
 
-		    self.add_whole_dir(self.__right, path)
+		    for x in self.add_whole_dir(self.__right, path):
+			yield x
 		    b = self.__right.next()
 		    continue
 
@@ -154,42 +164,51 @@ class comparer:
 
 		if a[1] == b[1]:
 		    # Same name as well.
-		    self.handle_same_nondir(path, a, b)
+		    for x in self.handle_same_nondir(path, a, b):
+			yield x
 		    a = self.__left.next()
 		    b = self.__right.next()
 		    continue
 
 		elif a[1] < b[1]:
 		    # Deleted non-dir.
-		    self.handle_delete_nondir(path, a, False)
+		    for x in self.handle_delete_nondir(path, a, False):
+			yield x
 		    a = self.__left.next()
 		    continue
 
 		else:
 		    # Added non-dir.
-		    self.handle_add_nondir(path, b, False)
+		    for x in self.handle_add_nondir(path, b, False):
+			yield x
 		    b = self.__right.next()
 		    continue
 
 	    elif a[0] == '-' and b[0] == 'u':
-		self.handle_delete_nondir(path, a, False)
+		for x in self.handle_delete_nondir(path, a, False):
+		    yield x
 		a = self.__left.next()
 		continue
 
 	    elif a[0] == 'u' and b[0] == '-':
-		self.handle_add_nondir(path, b, False)
+		for x in self.handle_add_nondir(path, b, False):
+		    yield x
 		b = self.__right.next()
 		continue
 
 	    elif a[0] == 'd' and b[0] == '-':
-		self.handle_delete_dir(path, a, False)
-		self.delete_whole_dir(self.__left, path)
+		for x in self.handle_delete_dir(path, a, False):
+		    yield x
+		for x in self.delete_whole_dir(self.__left, path):
+		    yield x
 		a = self.__left.next()
 		continue
 
 	    elif (a[0] == '-' or a[0] == 'u') and b[0] == 'd':
-		self.handle_add_dir(path, b, False)
-		self.add_whole_dir(self.__right, path)
+		for x in self.handle_add_dir(path, b, False):
+		    yield x
+		for x in self.add_whole_dir(self.__right, path):
+		    yield x
 		b = self.__right.next()
 		continue
 
@@ -205,10 +224,13 @@ class comparer:
 	    if a[0] == 'u':
 		return
 	    elif a[0] == 'd':
-		self.handle_add_dir(path, a, True)
-		self.add_whole_dir(iter, os.path.join(path, a[1]))
+		for x in self.handle_add_dir(path, a, True):
+		    yield x
+		for x in self.add_whole_dir(iter, os.path.join(path, a[1])):
+		    yield x
 	    else:
-		self.handle_add_nondir(path, a, True)
+		for x in self.handle_add_nondir(path, a, True):
+		    yield x
 
     def delete_whole_dir(self, iter, path):
 	"Consume entries until this directory has been deleted"
@@ -218,38 +240,45 @@ class comparer:
 	    if a[0] == 'u':
 		return
 	    elif a[0] == 'd':
-		self.handle_delete_dir(path, a, True)
-		self.delete_whole_dir(iter, os.path.join(path, a[1]))
+		for x in self.handle_delete_dir(path, a, True):
+		    yield x
+		for x in self.delete_whole_dir(iter, os.path.join(path, a[1])):
+		    yield x
 	    else:
-		self.handle_delete_nondir(path, a, True)
+		for x in self.handle_delete_nondir(path, a, True):
+		    yield x
 
 class check_comparer(comparer):
     """Comparer for comparing either two trees, or a tree and a
-    filesystem.  'right' should be the newer tree."""
+    filesystem.  'right' should be the newer tree.
+    Yields strings giving the tree differences.
+    """
     def handle_same_dir(self, path, a, b):
 	#print "same_dir(%s, %s, %s)" % (path, a, b)
-	pass
+	return empty_generator()
     def handle_delete_dir(self, path, a, recursing):
-	if not recursing:
-	    print "- dir  %s" % (os.path.join(path, a[1]))
-	pass
+	if recursing:
+	    return
+	else:
+	    yield "- dir  %s" % (os.path.join(path, a[1]))
     def handle_add_dir(self, path, a, recursing):
-	if not recursing:
-	    print "+ dir  %s" % (os.path.join(path, a[1]))
-	pass
+	if recursing:
+	    return
+	else:
+	    yield "+ dir  %s" % (os.path.join(path, a[1]))
     def handle_same_nondir(self, path, a, b):
 	#print "same_nondir(%s, %s, %s)" % (path, a, b)
-	pass
+	return empty_generator()
     def handle_delete_nondir(self, path, a, recursing):
-	if not recursing:
-	    #print "delete_nondir(%s, %s, %s)" % (path, a, recursing)
-	    print "-      %s" % (os.path.join(path, a[1]))
-	pass
+	if recursing:
+	    return
+	else:
+	    yield "-      %s" % (os.path.join(path, a[1]))
     def handle_add_nondir(self, path, a, recursing):
-	if not recursing:
-	    #print "add_nondir(%s, %s, %s)" % (path, a, recursing)
-	    print "+      %s" % (os.path.join(path, a[1]))
-	pass
+	if recursing:
+	    return
+	else:
+	    yield "+      %s" % (os.path.join(path, a[1]))
 
 version = 'Asure scan version 1.0'
 
@@ -284,7 +313,8 @@ def check_scan():
     prior = reader('0sure.dat.gz')
     cur = walk('.')
     # compare_trees(prior, cur)
-    check_comparer(prior, cur).run()
+    for x in check_comparer(prior, cur).run():
+	print x
 
 def main(argv):
     if len(argv) != 1:
