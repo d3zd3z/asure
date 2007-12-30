@@ -128,6 +128,8 @@ def empty_generator():
     return
     yield ()
 
+mode_add, mode_delete, mode_both = (1, 2, 3)
+
 class comparer:
     """Class for comparing two directory iterations.  Keeps track of
     state, and allows child classes to define handlers for the various
@@ -162,7 +164,11 @@ class comparer:
     def handle_add_nondir(self, path, a, recursing):
 	#print "add_nondir(%s, %s, %s)" % (path, a, recursing)
 	return empty_generator()
-    def handle_leave(self, path, recursing):
+    def handle_leave(self, path, mode):
+	"""Handle the leaving of a directory.  Instead of 'recursing',
+	the mode is defined as 'mode_add' (1) for add, 'mode_delete'
+	(2) for delete, or these two or'd together 'mode_both' (3) for
+	both"""
 	return empty_generator()
 
     def run(self):
@@ -192,7 +198,7 @@ class comparer:
 	    if a[0] == 'u' and b[0] == 'u':
 		# Both are leaving the directory.
 		# print "leave(%d): '%s'" % (depth, path)
-		for x in self.handle_leave(path, False):
+		for x in self.handle_leave(path, mode_both):
 		    yield x
 		return
 
@@ -295,7 +301,7 @@ class comparer:
 	while True:
 	    a = iter.next()
 	    if a[0] == 'u':
-		for x in self.handle_leave(path, True):
+		for x in self.handle_leave(path, mode_add):
 		    yield x
 		return
 	    elif a[0] == 'd':
@@ -313,7 +319,7 @@ class comparer:
 	while True:
 	    a = iter.next()
 	    if a[0] == 'u':
-		for x in self.handle_leave(path, True):
+		for x in self.handle_leave(path, mode_delete):
 		    yield x
 		return
 	    elif a[0] == 'd':
@@ -427,8 +433,9 @@ class update_comparer(comparer):
 	yield a
 	return
 
-    def handle_leave(self, path, recursing):
-	yield 'u',
+    def handle_leave(self, path, mode):
+	if (mode & mode_add) != 0:
+	    yield 'u',
 	return
 
 version = 'Asure scan version 1.0'
