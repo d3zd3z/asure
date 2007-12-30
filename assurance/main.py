@@ -520,7 +520,7 @@ def main(argv):
 		indent += 1
 
 def usage():
-    print "Usage: asure {scan|update|check}"
+    print "Usage: asure {scan|update|check|signoff|show}"
     sys.exit(1)
 
 if __name__ == '__main__':
