@@ -504,8 +504,14 @@ def main(argv):
     elif argv[0] == 'signoff':
 	signoff()
     elif argv[0] == 'show':
+	indent = 0
 	for i in reader('0sure.dat.gz'):
-	    print i
+	    if i[0] == 'd':
+		indent += 1
+	    elif i[0] == 'u':
+		indent -= 1
+
+	    print "%s%s" % ("  " * indent, i)
 
 def usage():
     print "Usage: asure {scan|update|check}"
