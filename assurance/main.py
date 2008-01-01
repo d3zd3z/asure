@@ -438,28 +438,64 @@ class update_comparer(comparer):
 	    yield 'u',
 	return
 
-version = 'Asure scan version 1.0'
+version = 'Asure scan version 1.1'
 
-def reader(path):
-    """Iterate over a previously written dump"""
-    fd = gzip.open(path, 'rb')
-    vers = load(fd)
-    if version != vers:
-	raise "incompatible version of asure file"
+def read1_0(fd):
     try:
 	while True:
 	    yield load(fd)
     except EOFError:
 	return
 
-def writer(path, iter):
+def read1_1(fd):
+    try:
+	while True:
+	    for item in load(fd):
+		yield item
+    except EOFError:
+	return
+
+readers = {
+	'Asure scan version 1.0': read1_0,
+	'Asure scan version 1.1': read1_1 }
+
+def reader(path):
+    """Iterate over a previously written dump"""
+    fd = gzip.open(path, 'rb')
+    vers = load(fd)
+    if readers.has_key(vers):
+	for item in readers[vers](fd):
+	    yield item
+    else:
+	raise "Unsupported version of asure file"
+    fd.close()
+
+use_protocol = -1
+
+def writer_new(path, iter):
     """Write the given item (probably assembled iterator)"""
     fd = gzip.open(path, 'wb')
-    dump(version, fd, -1)
+    dump(version, fd, use_protocol)
+    items = []
     for item in iter:
-	# print item
-	dump(item, fd, -1)
-    fd.close
+	items.append(item)
+	if len(items) >= 100:
+	    dump(items, fd, use_protocol)
+	    items = []
+    if len(items) > 0:
+	dump(items, fd, use_protocol)
+    fd.close()
+
+def writer_old(path, iter):
+    """Write the given item (probably assembled iterator)"""
+    fd = gzip.open(path, 'wb')
+    dump('Asure scan version 1.0', fd, use_protocol)
+    for item in iter:
+	dump(item, fd, use_protocol)
+    fd.close()
+
+def writer(path, iter):
+    writer_new(path, iter)
 
 def rename_cycle():
     """Cycle through the names"""
@@ -514,12 +550,19 @@ def nothing():
     for i in reader('0sure.dat.gz'):
 	pass
 
+def copy():
+    """Copy the latest scan, can be used to update to a newer storage
+    format."""
+    writer('0sure.0.gz', reader('0sure.dat.gz'))
+    os.rename('0sure.0.gz', '0sure.dat.gz')
+
 commands = {
     'scan': fresh_scan,
     'update': update,
     'check': check_scan,
     'signoff': signoff,
     'show': show,
+    'copy': copy,
     'nothing': nothing }
 
 def main(argv):
