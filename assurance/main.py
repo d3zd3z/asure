@@ -499,28 +499,39 @@ def signoff():
     for x in check_comparer(prior, cur).run():
 	print x
 
+def show():
+    """Show the contents of the scan file"""
+    indent = 0
+    for i in reader('0sure.dat.gz'):
+	if i[0] == 'u':
+	    indent -= 1
+	print "%s%s" % ("  " * indent, i)
+	if i[0] == 'd':
+	    indent += 1
+
+def nothing():
+    """Just read the scan file, doing nothing with it"""
+    for i in reader('0sure.dat.gz'):
+	pass
+
+commands = {
+    'scan': fresh_scan,
+    'update': update,
+    'check': check_scan,
+    'signoff': signoff,
+    'show': show,
+    'nothing': nothing }
+
 def main(argv):
     if len(argv) != 1:
 	usage()
-    if argv[0] == 'scan':
-	fresh_scan()
-    elif argv[0] == 'update':
-	update()
-    elif argv[0] == 'check':
-	check_scan()
-    elif argv[0] == 'signoff':
-	signoff()
-    elif argv[0] == 'show':
-	indent = 0
-	for i in reader('0sure.dat.gz'):
-	    if i[0] == 'u':
-		indent -= 1
-	    print "%s%s" % ("  " * indent, i)
-	    if i[0] == 'd':
-		indent += 1
+    if commands.has_key(argv[0]):
+	commands[argv[0]]()
+    else:
+	usage()
 
 def usage():
-    print "Usage: asure {scan|update|check|signoff|show}"
+    print "Usage: asure {%s}" % '|'.join(commands.keys())
     sys.exit(1)
 
 if __name__ == '__main__':
