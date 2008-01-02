@@ -342,8 +342,8 @@ __must_match = {
 	}
 def compare_entries(path, a, b):
     if a['kind'] != b['kind']:
-	yield "- %-4s %s" % (a['kind'], path)
-	yield "+ %-4s %s" % (b['kind'], path)
+	yield "- %-20s %s" % (a['kind'], path)
+	yield "+ %-20s %s" % (b['kind'], path)
 	return
     misses = []
     for item in __must_match[a['kind']]:
@@ -352,7 +352,7 @@ def compare_entries(path, a, b):
 	elif a[item] != b[item]:
 	    misses.append(item)
     if misses:
-	yield "[%s] %s" % (",".join(misses), path)
+	yield "  [%-18s] %s" % (",".join(misses), path)
     if 'targ' in misses:
 	if a.has_key('targ'):
 	    yield "  old targ: %s" % a['targ']
@@ -372,12 +372,12 @@ class check_comparer(comparer):
 	if recursing:
 	    return
 	else:
-	    yield "- dir  %s" % (os.path.join(path, a[1]))
+	    yield "- %-20s %s" % ('dir', os.path.join(path, a[1]))
     def handle_add_dir(self, path, a, recursing):
 	if recursing:
 	    return
 	else:
-	    yield "+ dir  %s" % (os.path.join(path, a[1]))
+	    yield "+ %-20s %s" % ('dir', os.path.join(path, a[1]))
     def handle_same_nondir(self, path, a, b):
 	return compare_entries(os.path.join(path, a[1]), a[2], b[2])
 
@@ -385,12 +385,12 @@ class check_comparer(comparer):
 	if recursing:
 	    return
 	else:
-	    yield "- %-4s %s" % (a[2]['kind'], os.path.join(path, a[1]))
+	    yield "- %-20s %s" % (a[2]['kind'], os.path.join(path, a[1]))
     def handle_add_nondir(self, path, a, recursing):
 	if recursing:
 	    return
 	else:
-	    yield "+ %-4s %s" % (a[2]['kind'], os.path.join(path, a[1]))
+	    yield "+ %-20s %s" % (a[2]['kind'], os.path.join(path, a[1]))
 
 def update_link(assoc, path, name):
     if assoc['kind'] == 'lnk':
