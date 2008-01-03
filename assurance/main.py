@@ -11,6 +11,7 @@ from cPickle import dump, load
 import gzip
 
 import hashing
+import version
 
 def walk(top):
     """Root of directory generator"""
@@ -444,7 +445,7 @@ class update_comparer(comparer):
 	    yield 'u',
 	return
 
-version = 'Asure scan version 1.1'
+file_version = 'Asure scan version 1.1'
 
 def read1_0(fd):
     try:
@@ -481,7 +482,7 @@ use_protocol = -1
 def writer_new(path, iter):
     """Write the given item (probably assembled iterator)"""
     fd = gzip.open(path, 'wb')
-    dump(version, fd, use_protocol)
+    dump(file_version, fd, use_protocol)
     items = []
     for item in iter:
 	items.append(item)
@@ -580,6 +581,7 @@ def main(argv):
 	usage()
 
 def usage():
+    print "Asure, version %s" % version.version
     print "Usage: asure {%s}" % '|'.join(commands.keys())
     sys.exit(1)
 
