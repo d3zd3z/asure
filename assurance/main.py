@@ -422,14 +422,20 @@ class update_comparer(comparer):
 	    if same_inode(a[2], b[2]):
 		b[2]['md5'] = a[2]['md5']
 	    else:
-		b[2]['md5'] = hashing.hashof(os.path.join(path, b[1]))
+		try:
+		    b[2]['md5'] = hashing.hashof(os.path.join(path, b[1]))
+		except OSError:
+		    b[2]['md5'] = '[error]'
 	yield b
 	return
 
     def handle_add_nondir(self, path, a, recursing):
 	update_link(a[2], path, a[1])
 	if a[2]['kind'] == 'file':
-	    a[2]['md5'] = hashing.hashof(os.path.join(path, a[1]))
+	    try:
+		a[2]['md5'] = hashing.hashof(os.path.join(path, a[1]))
+	    except OSError:
+		a[2]['md5'] = '[error]'
 	yield a
 	return
 
