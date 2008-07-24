@@ -2,6 +2,7 @@
 
 # Directory integrity scanner.
 
+import math
 from stat import *
 import os
 import sys
@@ -351,7 +352,14 @@ def compare_entries(path, a, b):
 	if not (a.has_key(item) and b.has_key(item)):
 	    misses.append(item)
 	elif a[item] != b[item]:
-	    misses.append(item)
+	    # Python 2.5 stat is returning subseconds, which tar
+	    # doesn't backup.  We can check this later, but for now,
+	    # just ignore the subsecond portions
+	    if (item == 'mtime' and
+		    math.floor(a[item]) == math.floor(b[item])):
+		pass
+	    else:
+		misses.append(item)
     if misses:
 	yield "  [%-18s] %s" % (",".join(misses), path)
     if 'targ' in misses:
