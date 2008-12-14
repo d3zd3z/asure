@@ -43,11 +43,15 @@ def walker(path, name, dirstat):
 		onename == "0sure.bak.gz" or
 		onename == "0sure.0.gz"):
 	    continue
-	st = os.lstat(join(path, onename))
-	if S_ISDIR(st.st_mode):
-	    dirs.append((onename, st))
-	else:
-	    nondirs.append((onename, st))
+	try:
+	    st = os.lstat(join(path, onename))
+	    if S_ISDIR(st.st_mode):
+		dirs.append((onename, st))
+	    else:
+		nondirs.append((onename, st))
+	except Exception:
+	    sys.stderr.write("Warning, can't stat: %s\n" % join(path, onename))
+	    pass
 
     # Indicate "entering" the directory.
     yield 'd', name, convert_stat(dirstat)
