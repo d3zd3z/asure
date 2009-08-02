@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-import md5
+import hashlib
 import sys
 import os
 import platform
@@ -24,7 +24,7 @@ def hashof(path):
     ufd = os.open(path, os.O_RDONLY | extra_flags)
     fd = os.fdopen(ufd, 'rb', 0)
     # fd = open(path, 'rb')
-    hash = md5.new()
+    hash = hashlib.md5()
     while True:
 	buf = fd.read(32768)
 	if buf == '':
